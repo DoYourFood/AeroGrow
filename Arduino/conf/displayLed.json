@@ -1,0 +1,20 @@
+{
+	"AFF_G1": {
+		"wire": [
+			{"color":"bleu","use":"signal_N0", "pin": 22},
+			{"color":"violet","use":"signal_N1", "pin": 23},
+			{"color":"gris","use":"signal_N2", "pin": 24},
+			{"color":"blanc","use":"signal_N3", "pin": 25}
+		],
+		"html_elem": {"id":7}
+	},
+	"AFF_G2": {
+		"wire": [
+			{"color": "noir", "use": "signal_N0", "pin": 26},
+			{"color": "marron", "use": "signal_N1", "pin": 27},
+			{"color": "rouge","use": "signal_N2", "pin": 28},
+			{"color": "orange", "use": "signal_N3", "pin": 29}
+		],
+		"html_elem": {"id":8}
+	}
+}

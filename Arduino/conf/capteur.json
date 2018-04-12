@@ -1,0 +1,53 @@
+{
+	"CPT_Level_Reservoir_Droit" : {
+		"wire" : [
+			{"color": "marron", "use": "signal_N0", "pin": 30},
+			{"color": "rouge", "use": "signal_N1", "pin": 31},
+			{"color": "orange", "use": "signal_N2", "pin": 32},
+			{"color": "jaune", "use": "signal_N3", "pin": 33}
+		],
+		"html_elem": {"id":9}
+	},
+	"CPT_Level_Reservoir_Gauche" : {
+		"wire" : [
+			{"color": "marron", "use": "signal_N0", "pin": 34},
+			{"color": "rouge", "use": "signal_N1", "pin": 35},
+			{"color": "orange", "use": "signal_N2", "pin": 36},
+			{"color": "jaune", "use": "signal_N3", "pin": 37}
+		],
+		"html_elem": {"id":10}
+	},
+	"Capteur_Niveau_Bac" : {
+		"wire" : [
+			{"color": "vert", "use": "signal_N0", "pin": 38},
+			{"color": "jaune", "use": "signal_N1", "pin": 39},
+			{"color": "orange", "use": "signal_N2", "pin": 40},
+			{"color": "rouge", "use": "signal_N3", "pin": 41}
+		],
+		"html_elem": {"id":11}
+	},
+	"Capteur_TemperatureHumid" : {
+		"wire" : [
+			{"color": "jaune", "use": "X"},
+			{"color": "vert", "use": "X"},
+			{"color": "bleu", "use": "X"}
+		],
+		"html_elem": {"id":12}
+	},
+	"Capteur_Debitmetre_Gauche" : {
+		"wire" : [
+			{"color": "bleu", "use": "X"},
+			{"color": "violet", "use": "X"},
+			{"color": "gris", "use": "X"}
+		],
+		"html_elem": {"id":13}
+	},
+	"Capteur_Debitmetre_Droit" : {
+		"wire" : [
+			{"color": "bleu", "use": "X"},
+			{"color": "violet", "use": "X"},
+			{"color": "gris", "use": "X"}
+		],
+		"html_elem": {"id":14}
+	}
+}
