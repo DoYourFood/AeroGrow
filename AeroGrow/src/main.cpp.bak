@@ -1,0 +1,340 @@
+//   _____                   _   _
+//  |  __ \                 | | | |
+//  | |  \/_ __ _____      _| | | |_ __
+//  | | __| '__/ _ \ \ /\ / / | | | '_ \"
+//  | |_\ \ | | (_) \ V  V /| |_| | |_) |
+//   \____/_|  \___/ \_/\_/  \___/| .__/
+//                                | |
+//                                |_|
+// ##########################################
+// Notes :
+//
+#include <Arduino.h>
+#include <ArduinoJson.h>
+#include <SD.h>
+#include <SPI.h>
+
+// Configuration that we'll store on disk
+struct Config {
+  char hostname[64];
+  int port;
+};
+
+const char *filename = "/config.txt";  // <- SD library uses 8.3 filenames
+Config config;                         // <- global configuration object
+
+/** Pin declaration */
+const byte PIN_M1 = 50;
+const byte PIN_M2 = 52;
+const byte PIN_M3 = 53;
+const byte PIN_DHT11 = 3;
+unsigned char TESTPINS[] = { PIN_M1, PIN_M2, PIN_M3, '\0' };
+/* Code d'erreur de la fonction readDHT11() et readDHT22() */
+const byte DHT_SUCCESS = 0;        // Pas d'erreur
+const byte DHT_TIMEOUT_ERROR = 1;  // Temps d'attente dépassé
+const byte DHT_CHECKSUM_ERROR = 2; // Données reçues erronées
+
+/** ######  Devices ########
+ */
+/**
+   ##Pumps
+ */
+/**
+   -- WaterTank
+ */
+const byte water_tank_pump = 30;
+/**
+   -- NutrientsTank
+ */
+const byte nutrient_tank_pump = 31;
+/**
+   -- FoodTank
+ */
+const byte food_tank_pump = 32;
+/** **Groups
+ */
+const byte PUMP_PINS[] = { water_tank_pump, nutrient_tank_pump, food_tank_pump };
+/**
+   ##Valves
+ */
+const byte water_valve = 33;
+const byte nutrient_valve = 34;
+const byte VALVES_PINS[] = { water_valve, nutrient_valve };
+/** ######  Indicators ########
+ */
+/**
+   ##Lights
+ */
+/**
+   -- WaterTank
+ */
+const byte water_tank_led_0 = 47;
+const byte water_tank_led_1 = 48;
+const byte water_tank_led_2 = 49;
+const byte water_tank_led_3 = 50;
+const byte WATER_LEDS[] = { \
+        water_tank_led_0, water_tank_led_1, water_tank_led_2, water_tank_led_3 \
+};
+/**
+   -- NutrientsTank
+   Note: led 'led_(0-9)' are numbered from lowest positions to highest
+ */
+const byte nutrient_tank_led_0 = 22;
+const byte nutrient_tank_led_1 = 23;
+const byte nutrient_tank_led_2 = 24;
+const byte nutrient_tank_led_3 = 25;
+const byte NUTRIENT_LEDS[] = { \
+        nutrient_tank_led_0, nutrient_tank_led_1, nutrient_tank_led_2, \
+        nutrient_tank_led_3 \
+};
+/**
+ * On push show liquid levels. side button
+ */
+const byte level_button = 26;
+/** ######  Sensors ########
+ */
+/**
+   -- WaterTank
+ */
+const byte water_tank_sensor_0 = 35;
+const byte water_tank_sensor_1 = 36;
+const byte water_tank_sensor_2 = 37;
+const byte water_tank_sensor_3 = 38;
+/**
+   -- NutrientsTank
+ */
+const byte nutrient_tank_sensor_0 = 39;
+const byte nutrient_tank_sensor_1 = 40;
+const byte capteur_niveau_nutriment_moyen = 41;
+const byte capteur_niveau_nutriment_haut = 42;
+/**
+   -- FoodTank
+ */
+const byte capteur_niveau_bac_bas = 43;
+const byte capteur_niveau_bac_moyenbas = 44;
+const byte capteur_niveau_bac_moyen = 45;
+const byte capteur_niveau_bac_haut = 46;
+
+/** Input order declaration*/
+String inputString = "";         // a String to hold incoming data
+boolean stringComplete = false;  // whether the string is complete
+
+void init_Mpins(const byte PINS[], int Mnumbers) {
+        for (int i = 0; i < Mnumbers; i++) {
+                pinMode(PINS[i], OUTPUT);
+                digitalWrite(PINS[i], LOW);
+        }
+}
+
+void init_DHTpins(const byte pin) {
+        pinMode(pin, INPUT_PULLUP);
+}
+
+// ###########################################################
+// #####################################################
+// ########################### SETUP() ##############
+void setup() {
+        Serial.begin(115200);
+        init_Mpins(TESTPINS, 3);
+        init_DHTpins(PIN_DHT11);
+}
+// ##############
+/*
+ *  * Functions : **
+ * niveau : eau, nutriments, melange
+ * affichage : led nutriments et eau
+ * controle moteur : pump, electrovanne, (brumi)
+ */
+
+/**
+ * Fonction bas niveau permettant de lire la température et le taux d'humidité (en valeurs brutes) mesuré par un capteur DHTxx.
+ */
+byte readDHTxx(byte pin, byte* data, unsigned long start_time, unsigned long timeout) {
+        data[0] = data[1] = data[2] = data[3] = data[4] = 0;
+        // start_time est en millisecondes
+        // timeout est en microsecondes
+
+        /* Conversion du numéro de broche Arduino en ports / masque binaire "bas niveau" */
+        uint8_t bit = digitalPinToBitMask(pin);
+        uint8_t port = digitalPinToPort(pin);
+        volatile uint8_t *ddr = portModeRegister(port); // Registre MODE (INPUT / OUTPUT)
+        volatile uint8_t *out = portOutputRegister(port); // Registre OUT (écriture)
+        volatile uint8_t *in = portInputRegister(port); // Registre IN (lecture)
+
+        /* Conversion du temps de timeout en nombre de cycles processeur */
+        unsigned long max_cycles = microsecondsToClockCycles(timeout);
+
+        /* Evite les problèmes de pull-up */
+        *out |= bit; // PULLUP
+        *ddr &= ~bit; // INPUT
+        delay(100); // Laisse le temps à la résistance de pullup de mettre la ligne de données à HIGH
+
+        /* Réveil du capteur */
+        *ddr |= bit; // OUTPUT
+        *out &= ~bit; // LOW
+        delay(start_time); // Temps d'attente à LOW causant le réveil du capteur
+        // N.B. Il est impossible d'utilise delayMicroseconds() ici car un délai
+        // de plus de 16 millisecondes ne donne pas un timing assez précis.
+
+        /* Portion de code critique - pas d'interruptions possibles */
+        noInterrupts();
+
+        /* Passage en écoute */
+        *out |= bit; // PULLUP
+        delayMicroseconds(40);
+        *ddr &= ~bit; // INPUT
+
+        /* Attente de la réponse du capteur */
+        timeout = 0;
+        while(!(*in & bit)) { /* Attente d'un état LOW */
+                if (++timeout == max_cycles) {
+                        interrupts();
+                        return DHT_TIMEOUT_ERROR;
+                }
+        }
+
+        timeout = 0;
+        while(*in & bit) { /* Attente d'un état HIGH */
+                if (++timeout == max_cycles) {
+                        interrupts();
+                        return DHT_TIMEOUT_ERROR;
+                }
+        }
+
+/* Lecture des données du capteur (40 bits) */
+        for (byte i = 0; i < 40; ++i) {
+
+                /* Attente d'un état LOW */
+                unsigned long cycles_low = 0;
+                while(!(*in & bit)) {
+                        if (++cycles_low == max_cycles) {
+                                interrupts();
+                                return DHT_TIMEOUT_ERROR;
+                        }
+                }
+
+                /* Attente d'un état HIGH */
+                unsigned long cycles_high = 0;
+                while(*in & bit) {
+                        if (++cycles_high == max_cycles) {
+                                interrupts();
+                                return DHT_TIMEOUT_ERROR;
+                        }
+                }
+
+                /* Si le temps haut est supérieur au temps bas c'est un "1", sinon c'est un "0" */
+                data[i / 8] <<= 1;
+                if (cycles_high > cycles_low) {
+                        data[i / 8] |= 1;
+                }
+        }
+
+/* Fin de la portion de code critique */
+        interrupts();
+
+/*
+ * Format des données :
+ * [1, 0] = humidité en %
+ * [3, 2] = température en degrés Celsius
+ * [4] = checksum (humidité + température)
+ */
+
+/* Vérifie la checksum */
+        byte checksum = (data[0] + data[1] + data[2] + data[3]) & 0xff;
+        if (data[4] != checksum)
+                return DHT_CHECKSUM_ERROR; /* Erreur de checksum */
+        else
+                return DHT_SUCCESS; /* Pas d'erreur */
+}
+
+/**
+ * Lit la température et le taux d'humidité mesuré par un capteur DHT11.
+ *
+ * @param pin Broche sur laquelle est câblée le capteur.
+ * @param temperature Pointeur vers la variable stockant la température.
+ * @param humidity Pointeur vers la variable stockant le taux d'humidité.
+ * @return DHT_SUCCESS si aucune erreur, DHT_TIMEOUT_ERROR en cas de timeout, ou DHT_CHECKSUM_ERROR en cas d'erreur de checksum.
+ */
+byte readDHT11(byte pin, float* temperature, float* humidity) {
+
+        /* Lit le capteur */
+        byte data[5];
+        byte ret = readDHTxx(pin, data, 18, 1000);
+
+        /* Détecte et retourne les erreurs de communication */
+        if (ret != DHT_SUCCESS)
+                return ret;
+
+        /* Calcul la vraie valeur de la température et de l'humidité */
+        *humidity = data[0];
+        *temperature = data[2];
+
+        /* Ok */
+        return DHT_SUCCESS;
+}
+
+int     print_temp() {
+        float temperature = 0;
+        float humidity = 0;
+
+        switch (readDHT11(PIN_DHT11, &temperature, &humidity)) {
+        case DHT_SUCCESS:
+
+                /* Affichage de la température et du taux d'humidité */
+                Serial.print("{\"Sensors\":[");
+                Serial.print(F("{\"Humidity\": \""));
+                Serial.print(humidity, 2);
+                Serial.print("\",");
+                Serial.print(F("\"Temperature\": \""));
+                Serial.print(temperature, 2);
+                Serial.println("\"}]}");
+                break;
+
+        case DHT_TIMEOUT_ERROR:
+                Serial.println(F("Pas de reponse !"));
+                break;
+
+        case DHT_CHECKSUM_ERROR:
+                Serial.println(F("Pb de communication !"));
+                break;
+        }
+
+        return (0);
+}
+
+/** Send on off event to requested pin
+ * @param cmd int index position on on/off pin Array.
+ * @return 1 if a required control (pin) exist or 0 if not.
+ */
+int start_stop(char cmd, unsigned char PINS[]) {
+        unsigned int pin = 0;
+
+        pin = std::stoi(&cmd);
+        delay(100);
+        return (0);
+}
+
+// ########################### Loop  #############################
+void loop() {
+        if (stringComplete == true) {
+                if (!start_stop(inputString[0], TESTPINS)) {
+                        delay(200);
+                        print_temp();
+                }
+                // clear the string:
+                inputString = "";
+                stringComplete = false;
+        }
+}
+
+void serialEvent() {
+        while (!Serial) {
+                char inChar = (char)Serial.read();
+                inputString += inChar;
+                if (inChar == '\n') {
+                        stringComplete = true;
+                        Serial.println((String)"{\"debug\":\"" + inputString[0] \
+                                       + (String)"\"}");
+                }
+        }
+}
