@@ -4,5 +4,5 @@
 
 <img src="https://github.com/DoYourFood/AeroGrow/raw/master/logo.png"
      alt="As of release 0.0.600 "
-     style="float: left; margin-right: 10px; margin-bottom: 10px;margin-left:20px"
+     style="float: left; margin-right: 10px; margin-bottom: 10px;margin-left:40px"
 />
